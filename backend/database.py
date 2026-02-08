@@ -413,7 +413,7 @@ def get_character_full(char: str) -> Optional[Dict]:
             'famous_quotes': parse_json(row['famous_quotes'], []),
             'character_structure': parse_json(row['character_structure'], {}),
             'meaning': row['meaning'],
-            'created_at': row['created_at'].isoformat() if row['created_at'] else None
+            'created_at': _format_datetime(row['created_at'])
         }
     return None
 
@@ -437,8 +437,17 @@ def get_all_characters() -> List[Dict]:
         'pinyin': row['pinyin'],
         'radical': row['radical'],
         'stroke_count': row['stroke_count'],
-        'created_at': row['created_at'].isoformat() if row['created_at'] else None
+        'created_at': _format_datetime(row['created_at'])
     } for row in rows]
+
+
+def _format_datetime(val):
+    """Format datetime value for JSON (handles both string and datetime)"""
+    if val is None:
+        return None
+    if hasattr(val, 'isoformat'):
+        return _format_datetime(val)
+    return str(val)
 
 
 def get_todays_characters() -> List[Dict]:
@@ -862,7 +871,7 @@ def get_word_by_id(word_id: int) -> Optional[Dict]:
             'related_character': row['related_character'],
             'display': row['display'],
             'is_ai_generated': row['is_ai_generated'],
-            'created_at': row['created_at'].isoformat() if row['created_at'] else None
+            'created_at': _format_datetime(row['created_at'])
         }
     return None
 
@@ -932,7 +941,7 @@ def get_all_users() -> List[Dict]:
         'username': row['username'],
         'display_name': row['display_name'],
         'avatar': row['avatar'],
-        'created_at': row['created_at'].isoformat() if row['created_at'] else None
+        'created_at': _format_datetime(row['created_at'])
     } for row in rows]
 
 
@@ -954,7 +963,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict]:
             'username': row['username'],
             'display_name': row['display_name'],
             'avatar': row['avatar'],
-            'created_at': row['created_at'].isoformat() if row['created_at'] else None
+            'created_at': _format_datetime(row['created_at'])
         }
     return None
 
@@ -1034,7 +1043,7 @@ def get_user_character_progress(user_id: int) -> List[Dict]:
         'character_id': row['character_id'],
         'character': row['character'],
         'pinyin': row['pinyin'],
-        'learned_date': row['learned_date'].isoformat() if row['learned_date'] else None,
+        'learned_date': _format_datetime(row['learned_date']),
         'review_count': row['review_count'],
         'proficiency': row['proficiency'],
         'is_learned': row['is_learned']
