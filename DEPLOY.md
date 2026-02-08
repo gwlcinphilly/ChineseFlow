@@ -1,117 +1,174 @@
 # 部署指南
 
-## 🚀 前端部署到 Vercel
+## 🚀 完整部署流程
 
-### 1. 准备工作
+### 1. GitHub + Vercel (前端) + Render (后端)
 
-- GitHub 账号
-- Vercel 账号（可以用 GitHub 登录）
-
-### 2. GitHub 仓库设置
-
-```bash
-# 初始化 git 仓库
-git init
-
-# 添加所有文件（data/ 和 settings.json 已被 .gitignore 排除）
-git add .
-git commit -m "Initial commit"
-
-# 推送到 GitHub
-git remote add origin https://github.com/YOUR_USERNAME/chineseflow.git
-git push -u origin main
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Vercel    │────▶│   Render    │────▶│  PostgreSQL │
+│  (前端)     │     │  (后端API)   │     │  (数据库)   │
+└─────────────┘     └─────────────┘     └─────────────┘
+     │                                            
+     ▼                                            
+GitHub Repo (代码仓库)                            
 ```
 
-### 3. Vercel 部署
+---
 
-1. 登录 [Vercel](https://vercel.com)
-2. 点击 "Add New Project"
-3. 选择 GitHub 上的 ChineseFlow 仓库
-4. 配置：
-   - **Framework Preset**: Vite
+## 📦 第一步：GitHub 仓库
+
+✅ **已完成** - 代码已推送到:
+https://github.com/gwlcinphilly/ChineseFlow
+
+---
+
+## 🎨 第二步：Vercel 部署前端
+
+### 方式 A: Web 界面 (推荐)
+
+1. 访问 https://vercel.com/new
+2. 使用 GitHub 登录
+3. 导入 `gwlcinphilly/ChineseFlow` 仓库
+4. 配置:
+   - **Framework**: Vite
    - **Root Directory**: `frontend`
    - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-5. 环境变量：
+   - **Output**: `dist`
+5. 环境变量:
    ```
-   VITE_API_URL=https://your-backend-url.com/api
+   VITE_API_URL=https://chineseflow-api.onrender.com/api
    ```
-   （如果后端还没部署，可以先不设置，使用默认的 localhost）
+   (先用这个，等后端部署好再更新)
 6. 点击 Deploy
 
-### 4. 后端部署选项
-
-由于前端需要调用后端 API，你需要将后端部署到公网。推荐方案：
-
-#### 方案 A: Render (免费)
-1. 创建 [Render](https://render.com) 账号
-2. 创建 Web Service
-3. 选择 GitHub 仓库
-4. 配置：
-   - **Root Directory**: `backend`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `python main.py`
-5. 环境变量：
-   ```
-   # 如果使用 PostgreSQL
-   DATABASE_URL=postgresql://...
-   ```
-
-#### 方案 B: Railway (免费额度)
-类似 Render 的设置方式。
-
-#### 方案 C: 本地开发
-如果只在本地使用，保持默认 `http://localhost:8000/api` 即可。
-
----
-
-## 🔒 安全注意事项
-
-### 已配置的安全措施
-
-1. **API Key 和数据库密码** 存储在 `backend/data/settings.json`，已加入 `.gitignore`
-2. **环境变量** 使用 `.env` 文件管理（未提交到 git）
-3. **CORS** 配置只允许特定域名访问
-
-### 部署前检查清单
-
-- [ ] `.env` 文件已创建且未提交到 git
-- [ ] `backend/data/settings.json` 未提交到 git
-- [ ] PostgreSQL 数据库使用强密码
-- [ ] 生产环境使用 HTTPS
-
----
-
-## 📁 项目结构
-
-```
-Chinese/
-├── frontend/           # React + Vite 前端
-│   ├── src/
-│   ├── dist/          # 构建输出
-│   ├── .env.example   # 环境变量示例
-│   └── vercel.json    # Vercel 配置
-├── backend/           # FastAPI 后端
-│   ├── data/          # 数据文件（未提交）
-│   ├── main.py
-│   └── ...
-├── .gitignore         # Git 忽略配置
-└── DEPLOY.md          # 本文件
-```
-
----
-
-## 🛠️ 本地开发
+### 方式 B: Vercel CLI
 
 ```bash
-# 启动后端
-cd backend
-source venv/bin/activate
-python main.py
+# 安装 Vercel CLI
+npm i -g vercel
 
-# 启动前端（新终端）
-cd frontend
-npm run dev
+# 登录
+vercel login
+
+# 部署
+cd /Users/qianglu/Code/git/Chinese/frontend
+vercel --prod
 ```
 
-访问 http://localhost:5173
+---
+
+## 🛠️ 第三步：Render 部署后端
+
+### 方式 A: Blueprint (推荐)
+
+1. 访问 https://dashboard.render.com/blueprints
+2. 点击 "New Blueprint Instance"
+3. 选择 `gwlcinphilly/ChineseFlow` 仓库
+4. Render 自动读取 `render.yaml` 配置
+5. 点击 "Apply"
+6. 等待部署完成 (约 2-3 分钟)
+
+### 方式 B: 手动创建
+
+1. 访问 https://dashboard.render.com
+2. 点击 "New +" → "Web Service"
+3. 选择 GitHub 仓库
+4. 配置:
+   - **Name**: `chineseflow-api`
+   - **Runtime**: Python 3
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Root Directory**: `backend`
+5. 点击 "Create Web Service"
+6. 创建 PostgreSQL 数据库:
+   - "New +" → "PostgreSQL"
+   - 名称: `chineseflow-db`
+   - 免费计划
+7. 链接数据库到 Web Service
+
+### 部署后配置
+
+1. 获取后端 URL (例如: `https://chineseflow-api.onrender.com`)
+2. 更新 Vercel 环境变量:
+   ```
+   VITE_API_URL=https://chineseflow-api.onrender.com/api
+   ```
+3. 在 Render Dashboard 添加 CORS 环境变量:
+   ```
+   CORS_ORIGINS=https://your-frontend.vercel.app
+   ```
+
+---
+
+## 🔗 各平台链接
+
+| 平台 | 用途 | 链接 |
+|------|------|------|
+| GitHub | 代码仓库 | https://github.com/gwlcinphilly/ChineseFlow |
+| Vercel | 前端托管 | (部署后生成) |
+| Render | 后端 API | (部署后生成) |
+| Render DB | PostgreSQL | (随后端创建) |
+
+---
+
+## ⚙️ 环境变量参考
+
+### 前端 (Vercel)
+```
+VITE_API_URL=https://chineseflow-api.onrender.com/api
+```
+
+### 后端 (Render)
+```
+DATABASE_URL=(自动生成)
+CORS_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
+PORT=8000
+```
+
+---
+
+## ✅ 部署检查清单
+
+### 部署前
+- [ ] GitHub 仓库已更新
+- [ ] `.gitignore` 已排除敏感文件
+- [ ] `render.yaml` 配置正确
+- [ ] `requirements.txt` 包含所有依赖
+
+### 部署后
+- [ ] 后端健康检查: `GET https://api-url/`
+- [ ] 前端能正常访问
+- [ ] API 调用正常
+- [ ] 图片生成正常
+- [ ] 数据库连接正常
+
+---
+
+## 🐛 常见问题
+
+### 1. CORS 错误
+```
+Access-Control-Allow-Origin header missing
+```
+**解决**: 在 Render 环境变量添加 `CORS_ORIGINS` 包含你的 Vercel 域名
+
+### 2. 数据库连接失败
+```
+connection refused
+```
+**解决**: 确认 `DATABASE_URL` 环境变量正确设置
+
+### 3. 前端 404
+```
+Cannot GET /api/characters
+```
+**解决**: 检查 `VITE_API_URL` 是否正确指向 `/api` 后缀
+
+---
+
+## 📚 相关文档
+
+- [前端部署详情](DEPLOY.md)
+- [后端部署详情](BACKEND_DEPLOY.md)
+- [数据库迁移指南](DATABASE_MIGRATION.md)
