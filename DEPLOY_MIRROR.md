@@ -1,84 +1,115 @@
 # Mirror Server Deployment Guide
 
-Deploy ChineseFlow backend to mirror server using Docker.
+Deploy ChineseFlow full stack (backend + frontend) to mirror server using Docker.
 
 ## 🚀 Quick Deploy
 
 ```bash
-# Deploy to mirror
+# Deploy full stack (backend + frontend)
 ./deploy.sh
 
 # Check status
 ./deploy.sh status
 
-# View logs
+# View backend logs
 ./deploy.sh logs
 
-# Restart
+# View frontend logs
+./deploy.sh logs-web
+
+# Restart all
 ./deploy.sh restart
+
+# Deploy frontend only (faster)
+./deploy.sh frontend-only
 ```
 
 ## 📋 Configuration
 
-| Setting | Value |
+| Service | Value |
 |---------|-------|
 | Server | `mirror` |
 | User | `alu` |
-| Port | `8090` |
+| **Backend** | `http://mirror:8090` |
+| **Frontend** | `http://mirror:8082` |
 | Directory | `/q/Docker/chineseflow` |
-| Container | `chineseflow-api` |
+| Backend Container | `chineseflow-api` |
+| Frontend Container | `chineseflow-web` |
 | Database | Neon PostgreSQL |
+
+## 🌐 Service URLs
+
+After deployment:
+- **Frontend**: http://mirror:8082
+- **Backend API**: http://mirror:8090
+- **API Docs**: http://mirror:8090/docs
 
 ## 🔗 Database
 
-Using Neon PostgreSQL (already configured):
+Using Neon PostgreSQL (configured automatically):
 ```
 postgresql://neondb_owner:npg_itv5qcJlA4TH@ep-purple-fire-airnrw5w-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 ```
 
-## 🌐 API Endpoints
-
-After deployment:
-- Health: `http://mirror:8090/`
-- API: `http://mirror:8090/api/characters`
-- Docs: `http://mirror:8090/docs`
-
 ## 🐳 Docker Commands
 
 ```bash
-# SSH to mirror and manage container
+# SSH to mirror
 ssh alu@mirror
 
-# View logs
+# View all containers
+docker ps | grep chineseflow
+
+# View backend logs
 docker logs -f chineseflow-api
 
-# Restart
+# View frontend logs
+docker logs -f chineseflow-web
+
+# Restart backend
 docker restart chineseflow-api
 
-# Stop
-docker stop chineseflow-api
+# Restart frontend
+docker restart chineseflow-web
 
-# Enter container
-docker exec -it chineseflow-api bash
+# Stop all
+cd /q/Docker/chineseflow && docker-compose down
+
+# View all logs
+cd /q/Docker/chineseflow && docker-compose logs -f
 ```
 
-## 🔄 Update Frontend API URL
+## 📁 Deployment Structure
 
-Update frontend to use mirror backend:
-
-```bash
-# In frontend/.env.production
-VITE_API_URL=http://mirror:8090/api
 ```
-
-Then redeploy frontend to Vercel.
+/q/Docker/chineseflow/
+├── backend/
+│   ├── Dockerfile
+│   ├── *.py
+│   └── data/
+├── frontend/
+│   ├── Dockerfile
+│   └── dist/
+└── docker-compose.yml
+```
 
 ## 📝 Deployment Process
 
-1. **Sync Files** - Copy backend code to `/q/Docker/chineseflow`
-2. **Build Image** - Create Docker image with Python 3.11
-3. **Start Container** - Run on port 8090
-4. **Health Check** - Verify API is responding
+1. **Backend**
+   - Sync Python files to `/q/Docker/chineseflow/backend`
+   - Build Docker image with Python 3.11
+   - Start container on port 8090
+
+2. **Frontend**
+   - Build locally with `npm run build`
+   - Sync dist files to `/q/Docker/chineseflow/frontend`
+   - Build Docker image with Nginx
+   - Start container on port 8082
+
+3. **Nginx Proxy**
+   - Frontend serves static files
+   - API requests (`/api/*`) proxied to backend
+   - Handles client-side routing
 
 ## 🛠️ Troubleshooting
 
@@ -96,13 +127,21 @@ docker-compose logs
 ### Port already in use
 ```bash
 ssh alu@mirror
-sudo lsof -i :8090
+sudo lsof -i :8090  # backend
+sudo lsof -i :8082  # frontend
 sudo kill -9 <PID>
 ```
 
-## 🎯 Next Steps
+### Frontend 404 errors
+```bash
+# Rebuild and redeploy frontend only
+./deploy.sh frontend-only
+```
 
-1. ✅ Run `./deploy.sh` to deploy backend
-2. ✅ Update frontend `VITE_API_URL` to `http://mirror:8090/api`
-3. ✅ Redeploy frontend to Vercel
-4. ✅ Test end-to-end
+## ✅ Deployment Status
+
+Run `./deploy.sh status` to see:
+- Container status
+- Service URLs
+- Health check results
+- Recent logs
