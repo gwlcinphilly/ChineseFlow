@@ -1,0 +1,5 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pypinyin==0.50.0
+jieba==0.42.1
+python-multipart==0.0.6
