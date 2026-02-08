@@ -23,16 +23,27 @@ from settings_manager import load_settings, save_settings, update_settings
 
 app = FastAPI(title="ChineseFlow API")
 
-# CORS configuration for local development
+# CORS configuration
+# Allow origins from environment variable or use defaults
+import os
+
+DEFAULT_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174", 
+    "http://localhost:5175",
+    "http://localhost:5176",
+    "http://localhost:3000",
+]
+
+# Read additional origins from environment variable
+# Format: comma-separated URLs
+additional_origins = os.getenv("CORS_ORIGINS", "")
+if additional_origins:
+    DEFAULT_ORIGINS.extend([url.strip() for url in additional_origins.split(",") if url.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174", 
-        "http://localhost:5175",
-        "http://localhost:5176",
-        "http://localhost:3000"
-    ],
+    allow_origins=DEFAULT_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

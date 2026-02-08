@@ -1,0 +1,25 @@
+# Render 部署配置
+# 文档: https://render.com/docs/infrastructure-as-code
+
+services:
+  - type: web
+    name: chineseflow-api
+    runtime: python
+    plan: free  # 免费计划
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    rootDir: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chineseflow-db
+          property: connectionString
+    autoDeploy: true  # Git push 自动部署
+
+databases:
+  - name: chineseflow-db
+    databaseName: chineseflow
+    user: chineseflow
+    plan: free  # 免费 PostgreSQL

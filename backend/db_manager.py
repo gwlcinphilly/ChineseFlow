@@ -30,7 +30,13 @@ def get_db_type() -> str:
 
 
 def get_postgres_url() -> Optional[str]:
-    """Get PostgreSQL connection URL from settings"""
+    """Get PostgreSQL connection URL from environment variable or settings"""
+    # First check environment variable (Render/Railway use this)
+    env_url = os.getenv('DATABASE_URL')
+    if env_url:
+        return env_url
+    
+    # Fall back to settings file
     try:
         from settings_manager import load_settings
         settings = load_settings()
