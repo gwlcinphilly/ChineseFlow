@@ -20,6 +20,10 @@ DB_PATH = Path(__file__).parent / "data" / "chinese_learning.db"
 
 def get_db_type() -> str:
     """Get current database type from settings or env"""
+    # Check environment variable first
+    if os.getenv('DATABASE_URL'):
+        return 'postgresql'
+    
     try:
         from settings_manager import load_settings
         settings = load_settings()

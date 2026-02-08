@@ -446,7 +446,7 @@ def _format_datetime(val):
     if val is None:
         return None
     if hasattr(val, 'isoformat'):
-        return _format_datetime(val)
+        return val.isoformat()
     return str(val)
 
 
