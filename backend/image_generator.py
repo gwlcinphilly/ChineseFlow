@@ -7,7 +7,7 @@ import os
 import random
 from pathlib import Path
 
-def generate_simple_image(character: str, description: str, output_dir: str) -> str:
+def generate_simple_image(character: str, description: str, output_dir: str, filename: str = None) -> str:
     """Generate a simple educational illustration for a Chinese character
     
     Style matches "bai" character illustration:
@@ -16,6 +16,12 @@ def generate_simple_image(character: str, description: str, output_dir: str) -> 
     - Decorative colored dots in corners
     - Small scattered dots
     - Clean, flat design
+    
+    Args:
+        character: The Chinese character
+        description: Description text
+        output_dir: Output directory path
+        filename: Optional custom filename (default: {character}_ai_generated.png)
     """
     
     # Fixed warm cream background (like "bai" character)
@@ -124,7 +130,9 @@ def generate_simple_image(character: str, description: str, output_dir: str) -> 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    filename = f"{character}_ai_generated.png"
+    # Use provided filename or default
+    if filename is None:
+        filename = f"{character}_ai_generated.png"
     filepath = output_path / filename
     
     img.save(filepath, "PNG")

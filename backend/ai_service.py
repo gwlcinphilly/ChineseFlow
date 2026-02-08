@@ -5,6 +5,7 @@ import json
 import requests
 import base64
 import urllib.parse
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Any, Tuple
 from pydantic import BaseModel
@@ -490,14 +491,17 @@ def generate_character_image(character: str, illustration_desc: str, settings: A
         full_prompt = build_image_prompt(character, illustration_desc)
         print(f"Image prompt:\n{full_prompt}")
         
-        output_path = Path(output_dir) / f"{character}_ai_generated.png"
+        # Use timestamp to create unique filename (preserves old images)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{character}_ai_generated_{timestamp}.png"
+        output_path = Path(output_dir) / filename
         
         # Option 1: SiliconFlow (国内, 便宜 ~¥0.01/张)
         if settings.provider == 'siliconflow' and settings.api_key:
             print("Using SiliconFlow (Flux.1-schnell)...")
             success, msg = generate_siliconflow_image(full_prompt, settings.api_key, str(output_path))
             if success:
-                return True, msg, f"/images/characters/{character}_ai_generated.png"
+                return True, msg, f"/images/characters/{filename}"
             else:
                 print(f"SiliconFlow failed: {msg}")
         
@@ -505,7 +509,7 @@ def generate_character_image(character: str, illustration_desc: str, settings: A
         print("Trying Pollinations.ai (free)...")
         success, msg = generate_free_image(full_prompt, str(output_path))
         if success:
-            return True, msg, f"/images/characters/{character}_ai_generated.png"
+            return True, msg, f"/images/characters/{filename}"
         else:
             print(f"Free service failed: {msg}")
         
@@ -514,13 +518,13 @@ def generate_character_image(character: str, illustration_desc: str, settings: A
             print("Using DALL-E 3 for image generation...")
             success, msg = generate_dalle_image(full_prompt, settings.api_key, str(output_path))
             if success:
-                return True, msg, f"/images/characters/{character}_ai_generated.png"
+                return True, msg, f"/images/characters/{filename}"
             else:
                 print(f"DALL-E failed: {msg}")
         
         # Option 4: Fallback to local simple image generator
         print(f"Using local image generator...")
-        image_path = generate_simple_image(character, illustration_desc, output_dir)
+        image_path = generate_simple_image(character, illustration_desc, output_dir, filename)
         
         if image_path:
             file_size = output_path.stat().st_size
