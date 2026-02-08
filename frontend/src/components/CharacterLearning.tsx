@@ -3,6 +3,8 @@ import { api } from '../api';
 import { WordDetailModal } from './WordDetailModal';
 import type { Character, CharacterListItem, AISettings } from '../types';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
 export function CharacterLearning() {
   const [allCharacters, setAllCharacters] = useState<CharacterListItem[]>([]);
   const [learnedChars, setLearnedChars] = useState<any[]>([]);

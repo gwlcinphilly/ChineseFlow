@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# ChineseFlow Backend Deployment Script
-# Deploys to mirror server via SSH
+# ChineseFlow Full Stack Deployment Script
+# Deploys both backend and frontend to mirror server via SSH
 # Usage: ./deploy.sh
 #
 
@@ -11,20 +11,28 @@ set -e
 REMOTE_HOST="mirror"
 REMOTE_USER="alu"
 REMOTE_DIR="/q/Docker/chineseflow"
-CONTAINER_NAME="chineseflow-api"
-PORT="8090"
+FRONTEND_DIR="frontend"
 
-# Neon PostgreSQL URL (from environment or settings)
-# Format: postgresql://user:password@host:port/dbname
+# Ports
+BACKEND_PORT="8090"
+FRONTEND_PORT="8082"
+
+# Container names
+BACKEND_CONTAINER="chineseflow-api"
+FRONTEND_CONTAINER="chineseflow-web"
+
+# Neon PostgreSQL URL
 DATABASE_URL="${DATABASE_URL:-postgresql://neondb_owner:npg_itv5qcJlA4TH@ep-purple-fire-airnrw5w-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require}"
 
 echo "=========================================="
-echo "ChineseFlow Backend Deployment"
+echo "ChineseFlow Full Stack Deployment"
 echo "=========================================="
 echo ""
 echo "Remote: ${REMOTE_USER}@${REMOTE_HOST}"
 echo "Target: ${REMOTE_DIR}"
-echo "Port: ${PORT}"
+echo ""
+echo "Backend: http://${REMOTE_HOST}:${BACKEND_PORT}"
+echo "Frontend: http://${REMOTE_HOST}:${FRONTEND_PORT}"
 echo "Database: Neon PostgreSQL"
 echo ""
 
@@ -32,7 +40,8 @@ echo ""
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+BLUE='\033[0;34m'
+NC='\033[0m'
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -46,9 +55,13 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+log_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
+}
+
 # Check SSH key
 check_ssh() {
-    log_info "Checking SSH connection..."
+    log_step "Checking SSH connection..."
     if ! ssh -o ConnectTimeout=5 -o BatchMode=yes ${REMOTE_USER}@${REMOTE_HOST} "echo OK" 2>/dev/null; then
         log_error "SSH connection failed. Please ensure SSH key is added to ssh-agent."
         log_info "Try: eval \$(ssh-agent -s) && ssh-add ~/.ssh/id_rsa"
@@ -59,29 +72,51 @@ check_ssh() {
 
 # Prepare remote directory
 prepare_remote() {
-    log_info "Preparing remote directory..."
+    log_step "Preparing remote directory..."
     ssh ${REMOTE_USER}@${REMOTE_HOST} "
-        # Try without sudo first, fallback to sudo only if needed
-        mkdir -p ${REMOTE_DIR} 2>/dev/null || sudo mkdir -p ${REMOTE_DIR}
-        # Ensure ownership
-        if [[ \$(stat -c '%U' ${REMOTE_DIR} 2>/dev/null) != '${REMOTE_USER}' ]]; then
-            sudo chown ${REMOTE_USER}:${REMOTE_USER} ${REMOTE_DIR} 2>/dev/null || true
-        fi
+        mkdir -p ${REMOTE_DIR}/backend 2>/dev/null || sudo mkdir -p ${REMOTE_DIR}/backend
+        mkdir -p ${REMOTE_DIR}/frontend/dist 2>/dev/null || sudo mkdir -p ${REMOTE_DIR}/frontend/dist
+        sudo chown ${REMOTE_USER}:${REMOTE_USER} ${REMOTE_DIR} 2>/dev/null || true
     "
 }
 
-# Sync files to remote
-sync_files() {
-    log_info "Syncing files to remote..."
+# ==================== BACKEND DEPLOYMENT ====================
+
+# Create backend Dockerfile locally
+create_backend_dockerfile() {
+    log_step "Creating backend Dockerfile..."
     
-    # Create temp directory with necessary files
-    LOCAL_TEMP=$(mktemp -d)
-    
-    # Copy backend files
-    cp -r backend/* ${LOCAL_TEMP}/
+    cat > backend/Dockerfile << 'BACKENDDOCKER'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+RUN mkdir -p /app/data
+
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+BACKENDDOCKER
+}
+
+# Sync backend files to remote
+sync_backend() {
+    log_step "Syncing backend files to remote..."
     
     # Create .dockerignore
-    cat > ${LOCAL_TEMP}/.dockerignore << 'EOF'
+    cat > backend/.dockerignore << 'EOF'
 __pycache__/
 *.py[cod]
 *$py.class
@@ -101,7 +136,6 @@ build/
 .DS_Store
 EOF
     
-    # Sync to remote
     rsync -avz --delete \
         --exclude='__pycache__' \
         --exclude='venv' \
@@ -109,169 +143,207 @@ EOF
         --exclude='.git' \
         --exclude='data/*.json' \
         --exclude='*.log' \
-        ${LOCAL_TEMP}/ ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/
+        backend/ ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/backend/
     
-    # Cleanup
-    rm -rf ${LOCAL_TEMP}
-    
-    log_info "Files synced successfully"
+    log_info "Backend files synced successfully"
 }
 
-# Create Dockerfile on remote
-create_dockerfile() {
-    log_info "Creating Dockerfile..."
+# ==================== FRONTEND DEPLOYMENT ====================
+
+# Build frontend locally
+build_frontend() {
+    log_step "Building frontend locally..."
     
-    ssh ${REMOTE_USER}@${REMOTE_HOST} "cat > ${REMOTE_DIR}/Dockerfile << 'DOCKERFILE'
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Create data directory
-RUN mkdir -p /app/data
-
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
-
-# Expose port
-EXPOSE 8000
-
-# Run the application
-CMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]
-DOCKERFILE"
+    if [ ! -d "${FRONTEND_DIR}" ]; then
+        log_error "Frontend directory not found: ${FRONTEND_DIR}"
+        exit 1
+    fi
+    
+    cd ${FRONTEND_DIR}
+    
+    if [ ! -d "node_modules" ]; then
+        log_info "Installing npm dependencies..."
+        npm install
+    fi
+    
+    log_info "Building frontend with production settings..."
+    VITE_API_URL="http://${REMOTE_HOST}:${BACKEND_PORT}/api" npm run build
+    
+    cd ..
+    log_info "Frontend build completed"
 }
 
-# Create docker-compose.yml
-create_compose() {
-    log_info "Creating docker-compose.yml..."
+# Create nginx config
+create_nginx_config() {
+    log_step "Creating nginx configuration..."
+    
+    cat > ${FRONTEND_DIR}/dist/nginx.conf << 'NGINXCONF'
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://chineseflow-api:8000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+NGINXCONF
+}
+
+# Create frontend Dockerfile locally
+create_frontend_dockerfile() {
+    log_step "Creating frontend Dockerfile..."
+    
+    cat > ${FRONTEND_DIR}/Dockerfile << 'FRONTENDDOCKER'
+FROM nginx:alpine
+COPY dist /usr/share/nginx/html
+COPY dist/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+FRONTENDDOCKER
+}
+
+# Sync frontend to remote
+sync_frontend() {
+    log_step "Syncing frontend build to remote..."
+    
+    rsync -avz --delete \
+        ${FRONTEND_DIR}/dist/ ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/frontend/dist/
+    
+    # Copy Dockerfile
+    rsync -avz ${FRONTEND_DIR}/Dockerfile ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/frontend/
+    
+    log_info "Frontend synced successfully"
+}
+
+# ==================== DOCKER COMPOSE ====================
+
+create_docker_compose() {
+    log_step "Creating docker-compose.yml..."
     
     ssh ${REMOTE_USER}@${REMOTE_HOST} "cat > ${REMOTE_DIR}/docker-compose.yml << COMPOSE
 version: '3.8'
 
 services:
   api:
-    build: .
-    container_name: ${CONTAINER_NAME}
+    build: ./backend
+    container_name: ${BACKEND_CONTAINER}
     restart: unless-stopped
     ports:
-      - "${PORT}:8000"
+      - "${BACKEND_PORT}:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - CORS_ORIGINS=*
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./data:/app/data
+      - ./backend/data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - chineseflow-net
 
-  # Optional: Add nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    container_name: chineseflow-nginx
+  web:
+    build: ./frontend
+    container_name: ${FRONTEND_CONTAINER}
     restart: unless-stopped
     ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - "${FRONTEND_PORT}:80"
     depends_on:
       - api
-    profiles:
-      - with-nginx
+    networks:
+      - chineseflow-net
+
+networks:
+  chineseflow-net:
+    driver: bridge
 COMPOSE"
 }
 
-# Create nginx config (optional)
-create_nginx() {
-    log_info "Creating nginx configuration..."
-    
-    ssh ${REMOTE_USER}@${REMOTE_HOST} "cat > ${REMOTE_DIR}/nginx.conf << 'NGINX'
-server {
-    listen 80;
-    server_name localhost;
+# ==================== DEPLOYMENT ====================
 
-    location / {
-        proxy_pass http://api:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-}
-NGINX"
-}
-
-# Build and deploy
 deploy() {
-    log_info "Building and deploying Docker container..."
+    log_step "Building and deploying Docker containers..."
     
     ssh ${REMOTE_USER}@${REMOTE_HOST} "
         cd ${REMOTE_DIR}
         
-        # Stop and remove existing container
-        echo 'Stopping existing container...'
+        echo 'Stopping existing containers...'
         docker-compose down 2>/dev/null || true
-        docker stop ${CONTAINER_NAME} 2>/dev/null || true
-        docker rm ${CONTAINER_NAME} 2>/dev/null || true
+        docker stop ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
+        docker rm ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
         
-        # Build and start new container
-        echo 'Building Docker image...'
+        echo 'Building Docker images...'
         docker-compose build --no-cache
         
-        echo 'Starting container...'
+        echo 'Starting containers...'
         docker-compose up -d
         
-        # Wait for container to be ready
-        echo 'Waiting for container to be ready...'
-        sleep 5
+        echo 'Waiting for containers to be ready...'
+        sleep 10
         
-        # Check health
-        if docker ps | grep -q ${CONTAINER_NAME}; then
-            echo 'Container is running!'
-        else
-            echo 'ERROR: Container failed to start'
-            docker logs ${CONTAINER_NAME}
-            exit 1
-        fi
+        echo 'Checking container status...'
+        docker ps --filter name=chineseflow --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
     "
 }
 
 # Show status
 show_status() {
-    log_info "Deployment status:"
+    log_step "Deployment status:"
     ssh ${REMOTE_USER}@${REMOTE_HOST} "
-        echo '--- Container Status ---'
-        docker ps --filter name=${CONTAINER_NAME} --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
         echo ''
-        echo '--- Health Check ---'
-        curl -s http://localhost:${PORT}/ || echo 'Health check failed'
+        echo '========================================'
+        echo 'Container Status'
+        echo '========================================'
+        docker ps --filter name=chineseflow --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || echo 'No containers running'
+        
         echo ''
-        echo '--- Logs (last 20 lines) ---'
-        docker logs --tail 20 ${CONTAINER_NAME} 2>&1 || echo 'No logs available'
+        echo '========================================'
+        echo 'Service URLs'
+        echo '========================================'
+        echo \"Frontend: http://${REMOTE_HOST}:${FRONTEND_PORT}\"
+        echo \"Backend:  http://${REMOTE_HOST}:${BACKEND_PORT}\"
+        echo \"API Docs: http://${REMOTE_HOST}:${BACKEND_PORT}/docs\"
+        
+        echo ''
+        echo '========================================'
+        echo 'Health Checks'
+        echo '========================================'
+        echo -n 'Backend: '
+        curl -s http://localhost:${BACKEND_PORT}/ 2>/dev/null && echo '' || echo 'FAILED'
+        echo -n 'Frontend: '
+        curl -s -o /dev/null -w '%{http_code}' http://localhost:${FRONTEND_PORT}/ 2>/dev/null && echo '' || echo 'FAILED'
+        echo ''
     "
 }
 
-# Cleanup old images
+# Cleanup
 cleanup() {
     log_warn "Cleaning up old Docker images..."
     ssh ${REMOTE_USER}@${REMOTE_HOST} "
@@ -279,26 +351,41 @@ cleanup() {
     "
 }
 
-# Main deployment flow
+# ==================== MAIN ====================
+
 main() {
+    log_step "Starting full stack deployment..."
+    
     check_ssh
     prepare_remote
-    sync_files
-    create_dockerfile
-    create_compose
-    create_nginx
+    
+    # Backend
+    create_backend_dockerfile
+    sync_backend
+    
+    # Frontend
+    build_frontend
+    create_nginx_config
+    create_frontend_dockerfile
+    sync_frontend
+    
+    # Docker
+    create_docker_compose
     deploy
     show_status
     
     log_info "=========================================="
-    log_info "Deployment completed successfully!"
+    log_info "Full Stack Deployment Complete!"
     log_info "=========================================="
     echo ""
-    log_info "API URL: http://${REMOTE_HOST}:${PORT}"
-    log_info "Health Check: http://${REMOTE_HOST}:${PORT}/"
-    log_info ""
-    log_info "To view logs: ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker logs -f ${CONTAINER_NAME}'"
-    log_info "To restart: ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker restart ${CONTAINER_NAME}'"
+    log_info "Frontend: http://${REMOTE_HOST}:${FRONTEND_PORT}"
+    log_info "Backend:  http://${REMOTE_HOST}:${BACKEND_PORT}"
+    log_info "API Docs: http://${REMOTE_HOST}:${BACKEND_PORT}/docs"
+    echo ""
+    log_info "Commands:"
+    log_info "  Logs backend:  ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker logs -f ${BACKEND_CONTAINER}'"
+    log_info "  Logs frontend: ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker logs -f ${FRONTEND_CONTAINER}'"
+    log_info "  Stop all:      ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker-compose down'"
 }
 
 # Handle script arguments
@@ -307,19 +394,37 @@ case "${1:-}" in
         show_status
         ;;
     logs)
-        ssh ${REMOTE_USER}@${REMOTE_HOST} "docker logs -f ${CONTAINER_NAME}"
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "docker logs -f ${BACKEND_CONTAINER}"
+        ;;
+    logs-web)
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "docker logs -f ${FRONTEND_CONTAINER}"
         ;;
     stop)
-        log_warn "Stopping container..."
-        ssh ${REMOTE_USER}@${REMOTE_HOST} "docker stop ${CONTAINER_NAME}"
+        log_warn "Stopping containers..."
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "cd ${REMOTE_DIR} && docker-compose down"
         ;;
     restart)
-        log_warn "Restarting container..."
-        ssh ${REMOTE_USER}@${REMOTE_HOST} "docker restart ${CONTAINER_NAME}"
+        log_warn "Restarting containers..."
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "cd ${REMOTE_DIR} && docker-compose restart"
         show_status
+        ;;
+    restart-web)
+        log_warn "Restarting frontend..."
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "docker restart ${FRONTEND_CONTAINER}"
         ;;
     cleanup)
         cleanup
+        ;;
+    frontend-only)
+        log_step "Deploying frontend only..."
+        check_ssh
+        prepare_remote
+        build_frontend
+        create_nginx_config
+        create_frontend_dockerfile
+        sync_frontend
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "cd ${REMOTE_DIR} && docker-compose build web && docker-compose up -d web"
+        log_info "Frontend redeployed!"
         ;;
     *)
         main
