@@ -61,8 +61,12 @@ check_ssh() {
 prepare_remote() {
     log_info "Preparing remote directory..."
     ssh ${REMOTE_USER}@${REMOTE_HOST} "
-        sudo mkdir -p ${REMOTE_DIR}
-        sudo chown ${REMOTE_USER}:${REMOTE_USER} ${REMOTE_DIR}
+        # Try without sudo first, fallback to sudo only if needed
+        mkdir -p ${REMOTE_DIR} 2>/dev/null || sudo mkdir -p ${REMOTE_DIR}
+        # Ensure ownership
+        if [[ \$(stat -c '%U' ${REMOTE_DIR} 2>/dev/null) != '${REMOTE_USER}' ]]; then
+            sudo chown ${REMOTE_USER}:${REMOTE_USER} ${REMOTE_DIR} 2>/dev/null || true
+        fi
     "
 }
 
