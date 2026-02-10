@@ -46,10 +46,16 @@ After deployment:
 
 ## 🔗 Database
 
-Using Neon PostgreSQL (configured automatically):
+**All environments use Neon PostgreSQL** (local, mirror, production):
+- Single shared database for data consistency
+- No local SQLite fallback
+- Connection URL configured automatically
+
 ```
 postgresql://neondb_owner:npg_itv5qcJlA4TH@ep-purple-fire-airnrw5w-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 ```
+
+See `DATABASE.md` for more details.
 
 ## 🐳 Docker Commands
 
