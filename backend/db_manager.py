@@ -1,5 +1,6 @@
 """
-Database Manager - Support both SQLite and PostgreSQL
+Database Manager - PostgreSQL Primary (Neon)
+All environments (local, mirror, production) use Neon PostgreSQL
 """
 import os
 import sqlite3
@@ -14,28 +15,27 @@ try:
 except ImportError:
     POSTGRES_AVAILABLE = False
 
-# Database configuration
+# Default Neon PostgreSQL URL - used by all environments
+DEFAULT_NEON_URL = "postgresql://neondb_owner:npg_itv5qcJlA4TH@ep-purple-fire-airnrw5w-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+# Database configuration (legacy - for migration only)
 DB_PATH = Path(__file__).parent / "data" / "chinese_learning.db"
 
 
 def get_db_type() -> str:
-    """Get current database type from settings or env"""
-    # Check environment variable first
-    if os.getenv('DATABASE_URL'):
-        return 'postgresql'
-    
-    try:
-        from settings_manager import load_settings
-        settings = load_settings()
-        db_config = settings.get('database', {})
-        return db_config.get('type', 'sqlite')
-    except Exception:
-        return 'sqlite'
+    """Always use PostgreSQL as primary database"""
+    # Always return postgresql - we use Neon for all environments
+    return 'postgresql'
 
 
 def get_postgres_url() -> Optional[str]:
-    """Get PostgreSQL connection URL from environment variable or settings"""
-    # First check environment variable (Render/Railway use this)
+    """Get PostgreSQL connection URL
+    Priority:
+    1. DATABASE_URL environment variable
+    2. Settings file (for backward compatibility)
+    3. Default Neon URL (fallback for all environments)
+    """
+    # Check environment variable first
     env_url = os.getenv('DATABASE_URL')
     if env_url:
         return env_url
@@ -45,9 +45,14 @@ def get_postgres_url() -> Optional[str]:
         from settings_manager import load_settings
         settings = load_settings()
         db_config = settings.get('database', {})
-        return db_config.get('postgresql_url')
+        url = db_config.get('postgresql_url')
+        if url:
+            return url
     except Exception:
-        return None
+        pass
+    
+    # Default to Neon PostgreSQL for all environments
+    return DEFAULT_NEON_URL
 
 
 class PostgresCursorWrapper:

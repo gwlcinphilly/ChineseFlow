@@ -1,0 +1,36 @@
+# Docker Compose for Local Development
+# Uses Neon PostgreSQL database for all environments
+
+version: '3.8'
+
+services:
+  api:
+    build: ./backend
+    container_name: chineseflow-api-local
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://neondb_owner:npg_itv5qcJlA4TH@ep-purple-fire-airnrw5w-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - chineseflow-net
+
+  web:
+    build: ./frontend
+    container_name: chineseflow-web-local
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    networks:
+      - chineseflow-net
+
+networks:
+  chineseflow-net:
+    driver: bridge
